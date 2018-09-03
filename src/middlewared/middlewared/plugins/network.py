@@ -522,6 +522,7 @@ class InterfacesService(CRUDService):
         Str('vlan_parent_interface'),
         Int('vlan_tag', validators=[Range(min=1, max=4094)]),
         Int('vlan_pcp', validators=[Range(min=0, max=7)], null=True),
+        Int('mtu', validators=[Range(min=1492, max=9216)], default=None, null=True),
         Str('options'),
         register=True
     ))
@@ -676,6 +677,9 @@ class InterfacesService(CRUDService):
                 f'{schema_name}.ipv6_auto',
                 'Only one interface can have IPv6 autoconfiguration enabled.'
             )
+
+        if data.get('mtu') and data.get('options') and RE_MTU.match(data.get('options')):
+            verrors.add(f'{schema_name}.options', 'MTU should be placed in its own field.')
 
         await self.middleware.run_in_thread(
             self.__validate_aliases, verrors, schema_name, data, ifaces
@@ -1288,10 +1292,12 @@ class InterfacesService(CRUDService):
             if err:
                 self.logger.info('{}: error applying: {}'.format(name, err))
 
-            # In case there is no MTU in interface options and it is currently
-            # different than the default of 1500, revert it
-            if data['int_options'].find('mtu') == -1 and iface.mtu != 1500:
-                iface.mtu = 1500
+        # In case there is no MTU in interface and it is currently
+        # different than the default of 1500, revert it
+        if data['int_mtu']:
+            iface.mtu = data['int_mtu']
+        elif iface.mtu != 1500:
+            iface.mtu = 1500
 
         if netif.InterfaceFlags.UP not in iface.flags:
             iface.up()
